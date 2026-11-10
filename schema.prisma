@@ -1,0 +1,187 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum OrgRole {
+  OWNER
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+  EXPIRED
+}
+
+enum MediaStatus {
+  PENDING_UPLOAD
+  READY
+  FAILED
+}
+
+enum JobStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model User {
+  id           String       @id @default(cuid())
+  name         String
+  email        String       @unique
+  passwordHash String
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  memberships  Membership[]
+  sessions     Session[]
+}
+
+model Organization {
+  id          String               @id @default(cuid())
+  name        String
+  slug        String               @unique
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  memberships Membership[]
+  invites     OrganizationInvite[]
+  sessions    Session[]
+  profiles    InstagramProfile[]
+  groups      AccountGroup[]
+  mediaAssets MediaAsset[]
+  publications PublicationJob[]
+}
+
+model Membership {
+  id             String       @id @default(cuid())
+  userId         String
+  organizationId String
+  role           OrgRole      @default(OWNER)
+  createdAt      DateTime     @default(now())
+
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+  @@index([organizationId])
+}
+
+model OrganizationInvite {
+  id             String       @id @default(cuid())
+  organizationId String
+  email          String
+  role           OrgRole      @default(EDITOR)
+  token          String       @unique
+  status         InviteStatus @default(PENDING)
+  expiresAt      DateTime
+  createdAt      DateTime     @default(now())
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, email])
+}
+
+model Session {
+  id             String       @id @default(cuid())
+  userId         String
+  organizationId String
+  expiresAt      DateTime
+  createdAt      DateTime     @default(now())
+
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([userId, organizationId])
+}
+
+model InstagramProfile {
+  id                String   @id @default(cuid())
+  organizationId    String
+  username          String
+  displayName       String?
+  encryptedPassword String?
+  encryptedSession  String?
+  sessionUpdatedAt  DateTime?
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  organization      Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  groups            AccountGroupProfile[]
+  publications      PublicationJob[]
+
+  @@unique([organizationId, username])
+  @@index([organizationId])
+}
+
+model AccountGroup {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  profiles       AccountGroupProfile[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+model AccountGroupProfile {
+  groupId   String
+  profileId String
+  addedAt   DateTime @default(now())
+
+  group     AccountGroup     @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  profile   InstagramProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@id([groupId, profileId])
+}
+
+model MediaAsset {
+  id             String      @id @default(cuid())
+  organizationId String
+  fileName       String
+  mimeType       String
+  sizeBytes      Int
+  storageKey     String      @unique
+  status         MediaStatus @default(PENDING_UPLOAD)
+  verifiedAt     DateTime?
+  createdAt      DateTime    @default(now())
+
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  publications   PublicationJob[]
+
+  @@index([organizationId, status])
+}
+
+model PublicationJob {
+  id             String    @id @default(cuid())
+  organizationId String
+  profileId      String
+  mediaId        String
+  caption        String?
+  status         JobStatus @default(QUEUED)
+  errorMessage   String?
+  scheduledAt    DateTime  @default(now())
+  publishedAt    DateTime?
+  createdAt      DateTime  @default(now())
+
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  profile        InstagramProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  media          MediaAsset       @relation(fields: [mediaId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, status])
+}
